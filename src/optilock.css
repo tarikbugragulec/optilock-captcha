@@ -233,25 +233,13 @@
   cursor: crosshair;
 }
 
-.ol-photo-base {
+.ol-render-canvas {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  display: block;
   pointer-events: none;
-  will-change: filter, transform;
-}
-
-.ol-photo-ghost {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  pointer-events: none;
-  mix-blend-mode: screen;
-  will-change: transform, opacity, filter;
 }
 
 .ol-reticle-overlay {

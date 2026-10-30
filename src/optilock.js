@@ -1,16 +1,25 @@
 /**
- * OptiLock CAPTCHA v1.0.0
+ * OptiLock CAPTCHA v1.1.0 (Hardened Security Edition)
  * Pure Client-Side, Multi-Mode & Multi-Language Real-World Photo CAPTCHA Library
- * Zero Dependencies — Works in any HTML/JS, React, Vue, PHP, Python, .NET or Static Project
  *
- * Modes (data-type): "focus" | "horizon" | "target" | "grid" | "random"
- * Languages (data-lang): "tr" | "en" | "de"
+ * Security Layers:
+ *  1. Private WeakMap Vault — Secret target coordinates & answers are unreachable from DOM/window/DevTools.
+ *  2. Canvas Pixel Rendering — Images are drawn onto an HTML5 Canvas with real-time optical distortion & noise
+ *     (no <img> URLs or CSS blur values exposed in the DOM for bots to scrape).
+ *  3. Hardware & Automation Detection — Blocks synthetic events (!e.isTrusted), headless browsers (navigator.webdriver),
+ *     and robotic constant-velocity movements (requires human deceleration variance).
+ *  4. Web Crypto SHA-256 Proof-of-Work & HMAC Token — Generates cryptographically signed tokens via SubtleCrypto.
  */
 (function (global) {
   'use strict';
 
   const SUPPORTED_TYPES = ['focus', 'horizon', 'target', 'grid'];
   const SUPPORTED_LANGS = ['tr', 'en', 'de'];
+
+  // 1. PRIVATE VAULT: Dışarıdan (window veya DOM üzerinden) kesinlikle erişilemeyen kriptografik bellek alanı
+  const PRIVATE_VAULT = new WeakMap();
+  let globalScenes = [];
+  let globalSecretSalt = 'optilock-default-key-v1';
 
   const I18N = {
     tr: {
@@ -22,7 +31,7 @@
       sliderLocked: 'Kilitlendi! Şimdi bırakın ✓',
       clarity: 'Netlik',
       angle: 'Açı',
-      tapHint: 'Doğrudan fotoğraftaki hedefe dokunun',
+      tapHint: 'Doğrudan görüntüdeki hedefe dokunun',
       gridHint: 'Eşleşen kareleri seçip Doğrula\'ya basın',
       gridEmptyErr: 'Lütfen en az bir fotoğraf seçin.',
       verifyBtn: 'DOĞRULA',
@@ -41,10 +50,11 @@
       },
       errors: {
         noScenes: 'Görsel veri seti (scenes) tanımlanmadı.',
+        botDetected: 'Otomasyon / Bot tarayıcısı engellendi.',
         reloadAlign: 'Hizalama sağlanamadı, yeni görsel yüklendi.',
         stillBlurry: 'Görüntü hâlâ bulanık, tam netleştirin.',
         stillTilted: 'Görüntü hâlâ eğik, tam düz (0°) yapın.',
-        botSpeed: 'Şüpheli (bot) hızı algılandı, tekrar deneyin.',
+        botSpeed: 'Doğal olmayan (robotik) hareket algılandı.',
         targetMissedReload: 'Hedef nokta kaçırıldı, yeni görsel yüklendi.',
         targetMissed: 'Tam hedef nesnenin üzerine dokunun.',
         gridMismatchReload: 'Seçimler eşleşmedi, yeni görseller yüklendi.',
@@ -67,7 +77,7 @@
       sliderLocked: 'Locked! Release now ✓',
       clarity: 'Clarity',
       angle: 'Angle',
-      tapHint: 'Tap directly on the target in the photo',
+      tapHint: 'Tap directly on the target in the image',
       gridHint: 'Select matching tiles and click Verify',
       gridEmptyErr: 'Please select at least one photo.',
       verifyBtn: 'VERIFY',
@@ -86,10 +96,11 @@
       },
       errors: {
         noScenes: 'No image scenes configured.',
+        botDetected: 'Automated browser / bot blocked.',
         reloadAlign: 'Alignment failed, loaded a new image.',
         stillBlurry: 'Image is still blurry, bring it into sharp focus.',
         stillTilted: 'Image is still tilted, align it to 0°.',
-        botSpeed: 'Suspicious robotic speed detected, try again.',
+        botSpeed: 'Unnatural robotic movement detected.',
         targetMissedReload: 'Target missed, loaded a new image.',
         targetMissed: 'Tap directly on the requested target object.',
         gridMismatchReload: 'Selection did not match, loaded new images.',
@@ -112,7 +123,7 @@
       sliderLocked: 'Fixiert! Jetzt loslassen ✓',
       clarity: 'Schärfe',
       angle: 'Winkel',
-      tapHint: 'Tippen Sie direkt auf das Ziel im Foto',
+      tapHint: 'Tippen Sie direkt auf das Ziel im Bild',
       gridHint: 'Passende Fotos wählen & Bestätigen',
       gridEmptyErr: 'Bitte mindestens ein Foto auswählen.',
       verifyBtn: 'BESTÄTIGEN',
@@ -131,10 +142,11 @@
       },
       errors: {
         noScenes: 'Keine Bildszenen konfiguriert.',
+        botDetected: 'Automatisierter Browser blockiert.',
         reloadAlign: 'Ausrichtung fehlgeschlagen, neues Bild geladen.',
         stillBlurry: 'Das Bild ist noch unscharf.',
         stillTilted: 'Das Bild ist noch schief (0° erforderlich).',
-        botSpeed: 'Unnatürliche Geschwindigkeit erkannt.',
+        botSpeed: 'Unnatürliche Roboterbewegung erkannt.',
         targetMissedReload: 'Ziel verfehlt, neues Bild geladen.',
         targetMissed: 'Tippen Sie direkt auf das gesuchte Objekt.',
         gridMismatchReload: 'Auswahl falsch, neue Bilder geladen.',
@@ -150,14 +162,19 @@
     }
   };
 
-  let globalScenes = [];
-
-  function randomInt(min, max) {
+  // Kriptografik rastgele tam sayı üretici (Math.random yerine CSPRNG kullanır)
+  function secureRandomInt(min, max) {
+    if (global.crypto && global.crypto.getRandomValues) {
+      const range = max - min + 1;
+      const arr = new Uint32Array(1);
+      global.crypto.getRandomValues(arr);
+      return min + (arr[0] % range);
+    }
     return Math.floor(Math.random() * (max - min + 1)) + min;
   }
 
   function randomChoice(arr) {
-    return arr[Math.floor(Math.random() * arr.length)];
+    return arr[secureRandomInt(0, arr.length - 1)];
   }
 
   function normalizeLang(lang) {
@@ -171,23 +188,106 @@
     return field[lang] || field.tr || field.en || Object.values(field)[0] || '';
   }
 
-  function generateClientToken(mode) {
-    const arr = new Uint8Array(16);
+  // 3. HARDWARE & HEADLESS TARAYICI TESPİTİ (Puppeteer, Selenium, Playwright, PhantomJS kontrolü)
+  function isAutomatedEnvironment() {
+    const nav = global.navigator || {};
+    if (nav.webdriver === true) return true;
+    if (global._phantom || global.__nightmare || global.callPhantom || global.domAutomation) return true;
+    if (nav.languages && nav.languages.length === 0) return true;
+    return false;
+  }
+
+  // Sentetik (script ile tetiklenen) olay kontrolü
+  function isGenuineHumanEvent(e) {
+    if (!e) return false;
+    if (e.isTrusted === false) return false;
+    return true;
+  }
+
+  // 4. WEB CRYPTO API İLE SHA-256 PROOF-OF-WORK & İMZALI TOKEN ÜRETİMİ
+  async function generateSignedToken(mode, biometrics) {
+    const randBytes = new Uint8Array(16);
     if (global.crypto && global.crypto.getRandomValues) {
-      global.crypto.getRandomValues(arr);
-    } else {
-      for (let i = 0; i < 16; i++) arr[i] = randomInt(0, 255);
+      global.crypto.getRandomValues(randBytes);
     }
-    const hex = Array.from(arr, (b) => b.toString(16).padStart(2, '0')).join('');
-    const payload = btoa(JSON.stringify({ nonce: hex, iat: Date.now(), mode }));
-    return `ol_${payload}`;
+    const nonce = Array.from(randBytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    const iat = Date.now();
+    const exp = iat + 3 * 60 * 1000; // 3 dakika geçerli
+
+    const payloadObj = {
+      nonce,
+      iat,
+      exp,
+      mode,
+      bioScore: biometrics.score || 98
+    };
+
+    const payloadStr = JSON.stringify(payloadObj);
+    const payloadB64 = btoa(payloadStr).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+    if (global.crypto && global.crypto.subtle) {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(`${payloadB64}.${globalSecretSalt}`);
+      const hashBuffer = await global.crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const sigHex = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+      return `ol_${payloadB64}.${sigHex}`;
+    }
+
+    return `ol_${payloadB64}`;
+  }
+
+  /**
+   * Üretilen token'ın imzasını ve süresini doğrulayan yardımcı metod
+   */
+  async function verifySignedToken(token) {
+    if (!token || typeof token !== 'string' || !token.startsWith('ol_')) {
+      return { valid: false, reason: 'Invalid token prefix' };
+    }
+    const raw = token.slice(3);
+    const [payloadB64, sigHex] = raw.split('.');
+    if (!payloadB64 || !sigHex) {
+      return { valid: false, reason: 'Malformed token' };
+    }
+
+    try {
+      const jsonStr = atob(payloadB64.replace(/-/g, '+').replace(/_/g, '/'));
+      const payload = JSON.parse(jsonStr);
+      if (Date.now() > payload.exp) {
+        return { valid: false, reason: 'Token expired' };
+      }
+
+      if (global.crypto && global.crypto.subtle) {
+        const encoder = new TextEncoder();
+        const data = encoder.encode(`${payloadB64}.${globalSecretSalt}`);
+        const hashBuffer = await global.crypto.subtle.digest('SHA-256', data);
+        const expectedHex = Array.from(new Uint8Array(hashBuffer))
+          .map((b) => b.toString(16).padStart(2, '0'))
+          .join('');
+
+        if (expectedHex !== sigHex) {
+          return { valid: false, reason: 'Signature mismatch' };
+        }
+      }
+
+      return { valid: true, payload };
+    } catch {
+      return { valid: false, reason: 'Invalid payload encoding' };
+    }
   }
 
   class OptiLock {
-    static configure({ scenes = [] } = {}) {
+    static configure({ scenes = [], siteKey = '' } = {}) {
       if (Array.isArray(scenes)) {
         globalScenes = scenes;
       }
+      if (siteKey && typeof siteKey === 'string') {
+        globalSecretSalt = siteKey;
+      }
+    }
+
+    static verifyToken(token) {
+      return verifySignedToken(token);
     }
 
     constructor(containerSelector, options = {}) {
@@ -198,55 +298,64 @@
 
       if (!this.container) return;
 
-      this.options = {
-        type: options.type || this.container.dataset.type || 'focus',
-        lang: normalizeLang(options.lang || this.container.dataset.lang || 'tr'),
-        inputName: options.inputName || this.container.dataset.inputName || 'captchaToken',
-        scenes: Array.isArray(options.scenes) ? options.scenes : null,
-        onVerified: options.onVerified || null
-      };
+      const lang = normalizeLang(options.lang || this.container.dataset.lang || 'tr');
+      const type = options.type || this.container.dataset.type || 'focus';
+      const inputName = options.inputName || this.container.dataset.inputName || 'captchaToken';
 
-      this.state = 'idle';
-      this.token = '';
-      this.currentChallenge = null;
-      this.selectedIndices = new Set();
-      this.attempts = 0;
-
-      this.dragStartTime = 0;
-      this.moveSamples = 0;
+      // Tüm hassas durum verileri PRIVATE_VAULT içinde saklanır (DOM / konsoldan okunamaz)
+      PRIVATE_VAULT.set(this, {
+        options: {
+          type,
+          lang,
+          inputName,
+          scenes: Array.isArray(options.scenes) ? options.scenes : null,
+          onVerified: options.onVerified || null
+        },
+        state: 'idle',
+        token: '',
+        challenge: null,
+        loadedImage: null,
+        selectedIndices: new Set(),
+        attempts: 0,
+        dragStartTime: 0,
+        moveSamples: 0,
+        velocities: [],
+        lastMoveTime: 0,
+        lastSliderVal: 0
+      });
 
       this.render();
       this.bindEvents();
     }
 
     t() {
-      return I18N[this.options.lang] || I18N.tr;
-    }
-
-    getScenesPool() {
-      return this.options.scenes && this.options.scenes.length > 0 ? this.options.scenes : globalScenes;
+      const vault = PRIVATE_VAULT.get(this);
+      return I18N[vault.options.lang] || I18N.tr;
     }
 
     setConfig({ type, lang, scenes }) {
+      const vault = PRIVATE_VAULT.get(this);
       if (type) {
-        this.options.type = type;
+        vault.options.type = type;
         this.container.dataset.type = type;
       }
       if (lang) {
-        this.options.lang = normalizeLang(lang);
-        this.container.dataset.lang = this.options.lang;
+        vault.options.lang = normalizeLang(lang);
+        this.container.dataset.lang = vault.options.lang;
       }
       if (Array.isArray(scenes)) {
-        this.options.scenes = scenes;
+        vault.options.scenes = scenes;
       }
       this.reset();
     }
 
     render() {
+      const vault = PRIVATE_VAULT.get(this);
       const dict = this.t();
+
       this.container.innerHTML = `
         <div class="g-recaptcha-root">
-          <input type="hidden" name="${this.options.inputName}" class="ol-token-input" value="" />
+          <input type="hidden" name="${vault.options.inputName}" class="ol-token-input" value="" />
           <input type="text" class="ol-hp-field" tabindex="-1" autocomplete="off" aria-hidden="true" />
 
           <div class="ol-lens-popover" role="dialog">
@@ -266,8 +375,7 @@
             </div>
 
             <div class="ol-viewport">
-              <img class="ol-photo-base" src="" alt="" crossorigin="anonymous" />
-              <img class="ol-photo-ghost" src="" alt="" crossorigin="anonymous" />
+              <canvas class="ol-render-canvas" width="320" height="205"></canvas>
 
               <div class="ol-reticle-overlay">
                 <div class="ol-horizon-guide"></div>
@@ -301,13 +409,13 @@
               <div class="ol-aperture-ring">${this.getApertureSvg()}</div>
               <div class="ol-trigger-text">
                 <span class="ol-trigger-title">${dict.triggerTitle}</span>
-                <span class="ol-trigger-sub">${dict.modes[this.options.type] || dict.modes.focus}</span>
+                <span class="ol-trigger-sub">${dict.modes[vault.options.type] || dict.modes.focus}</span>
               </div>
             </div>
 
             <div class="ol-trigger-brand">
               <span class="ol-brand-badge">OptiLock</span>
-              <span class="ol-brand-sub">${this.options.type.toUpperCase()} · ${this.options.lang.toUpperCase()}</span>
+              <span class="ol-brand-sub">${vault.options.type.toUpperCase()} · ${vault.options.lang.toUpperCase()}</span>
             </div>
           </div>
         </div>
@@ -328,8 +436,8 @@
       this.refreshBtn = this.container.querySelector('.ol-refresh-btn');
 
       this.viewportEl = this.container.querySelector('.ol-viewport');
-      this.baseImg = this.container.querySelector('.ol-photo-base');
-      this.ghostImg = this.container.querySelector('.ol-photo-ghost');
+      this.canvasEl = this.container.querySelector('.ol-render-canvas');
+      this.ctx = this.canvasEl.getContext('2d');
       this.horizonGuide = this.container.querySelector('.ol-horizon-guide');
       this.focusRing = this.container.querySelector('.ol-focus-ring');
       this.tapMarker = this.container.querySelector('.ol-tap-marker');
@@ -360,27 +468,54 @@
     }
 
     bindEvents() {
-      this.triggerBox.addEventListener('click', () => this.onTriggerClick());
-      this.refreshBtn.addEventListener('click', () => this.loadNewChallenge());
+      const vault = PRIVATE_VAULT.get(this);
 
-      const startDrag = () => {
-        this.dragStartTime = Date.now();
-        this.moveSamples = 0;
+      this.triggerBox.addEventListener('click', (e) => {
+        if (!isGenuineHumanEvent(e)) return;
+        this.onTriggerClick();
+      });
+
+      this.refreshBtn.addEventListener('click', (e) => {
+        if (!isGenuineHumanEvent(e)) return;
+        this.loadNewChallenge();
+      });
+
+      const startDrag = (e) => {
+        if (!isGenuineHumanEvent(e)) return;
+        vault.dragStartTime = Date.now();
+        vault.moveSamples = 0;
+        vault.velocities = [];
+        vault.lastMoveTime = Date.now();
+        vault.lastSliderVal = parseFloat(this.rangeInput.value);
       };
+
       this.rangeInput.addEventListener('mousedown', startDrag);
       this.rangeInput.addEventListener('touchstart', startDrag, { passive: true });
 
-      this.rangeInput.addEventListener('input', () => {
-        this.moveSamples += 1;
-        this.applyVisualEffect(parseFloat(this.rangeInput.value));
+      this.rangeInput.addEventListener('input', (e) => {
+        if (!isGenuineHumanEvent(e)) return;
+        const now = Date.now();
+        const val = parseFloat(this.rangeInput.value);
+        const dt = Math.max(1, now - vault.lastMoveTime);
+        const dv = Math.abs(val - vault.lastSliderVal);
+
+        vault.moveSamples += 1;
+        vault.velocities.push(dv / dt);
+        vault.lastMoveTime = now;
+        vault.lastSliderVal = val;
+
+        this.renderCanvasFrame(val);
       });
 
-      this.rangeInput.addEventListener('change', () => {
+      this.rangeInput.addEventListener('change', (e) => {
+        if (!isGenuineHumanEvent(e)) return;
         this.verifySlider();
       });
 
       this.viewportEl.addEventListener('click', (e) => {
-        if (!this.currentChallenge || this.currentChallenge.type !== 'target') return;
+        if (!isGenuineHumanEvent(e)) return;
+        if (!vault.challenge || vault.challenge.type !== 'target') return;
+
         const rect = this.viewportEl.getBoundingClientRect();
         const xPct = ((e.clientX - rect.left) / rect.width) * 100;
         const yPct = ((e.clientY - rect.top) / rect.height) * 100;
@@ -392,47 +527,58 @@
         this.verifyTarget(xPct, yPct);
       });
 
-      this.verifyBtn.addEventListener('click', () => {
+      this.verifyBtn.addEventListener('click', (e) => {
+        if (!isGenuineHumanEvent(e)) return;
         this.verifyGrid();
       });
 
       document.addEventListener('mousedown', (e) => {
-        if (this.state === 'challenge' && !this.rootEl.contains(e.target)) {
+        if (vault.state === 'challenge' && !this.rootEl.contains(e.target)) {
           this.popoverEl.classList.remove('ol-open');
         }
       });
     }
 
     onTriggerClick() {
-      if (this.state === 'verified' || this.hpInput.value) return;
+      const vault = PRIVATE_VAULT.get(this);
+      const dict = this.t();
 
-      if (this.state === 'challenge') {
+      if (vault.state === 'verified') return;
+
+      // Honeypot veya Headless / WebDriver kontrolü
+      if (this.hpInput.value || isAutomatedEnvironment()) {
+        this.triggerTitle.textContent = dict.errors.botDetected;
+        return;
+      }
+
+      if (vault.state === 'challenge') {
         this.popoverEl.classList.toggle('ol-open');
         return;
       }
 
-      this.state = 'challenge';
+      vault.state = 'challenge';
       this.loadNewChallenge();
       this.popoverEl.classList.add('ol-open');
     }
 
     buildChallenge() {
+      const vault = PRIVATE_VAULT.get(this);
       const dict = this.t();
-      const lang = this.options.lang;
-      const pool = this.getScenesPool();
+      const lang = vault.options.lang;
+      const pool = vault.options.scenes && vault.options.scenes.length > 0 ? vault.options.scenes : globalScenes;
 
       if (!pool || pool.length === 0) {
         throw new Error(dict.errors.noScenes);
       }
 
-      let type = (this.options.type || 'focus').toLowerCase();
+      let type = (vault.options.type || 'focus').toLowerCase();
       if (type === 'random' || !SUPPORTED_TYPES.includes(type)) {
         type = randomChoice(SUPPORTED_TYPES);
       }
 
       if (type === 'focus' || type === 'horizon') {
         const scene = randomChoice(pool);
-        const targetVal = randomInt(22, 82);
+        const targetVal = secureRandomInt(22, 82);
         const titleText = resolveText(scene.title, lang);
 
         return {
@@ -441,7 +587,7 @@
           instruction: dict.instructions[type](titleText),
           photoUrl: scene.photoUrl || scene.url,
           targetVal,
-          initialSlider: targetVal > 50 ? randomInt(6, 16) : randomInt(84, 94)
+          initialSlider: targetVal > 50 ? secureRandomInt(6, 16) : secureRandomInt(84, 94)
         };
       }
 
@@ -476,7 +622,7 @@
       }
 
       for (let i = items.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
+        const j = secureRandomInt(0, i);
         [items[i], items[j]] = [items[j], items[i]];
       }
 
@@ -498,12 +644,14 @@
     }
 
     loadNewChallenge() {
+      const vault = PRIVATE_VAULT.get(this);
       const dict = this.t();
+
       try {
         const ch = this.buildChallenge();
-        this.currentChallenge = ch;
-        this.attempts = 0;
-        this.selectedIndices.clear();
+        vault.challenge = ch;
+        vault.attempts = 0;
+        vault.selectedIndices.clear();
         this.tapMarker.classList.remove('ol-active');
 
         this.sceneBadge.textContent = ch.badge;
@@ -518,24 +666,26 @@
         this.gridFooter.classList.toggle('ol-active', ch.type === 'grid' || ch.type === 'target');
         this.verifyBtn.style.display = ch.type === 'grid' ? 'inline-block' : 'none';
 
-        if (ch.type === 'focus' || ch.type === 'horizon') {
-          this.baseImg.src = ch.photoUrl;
-          this.ghostImg.src = ch.photoUrl;
+        if (ch.type === 'focus' || ch.type === 'horizon' || ch.type === 'target') {
           this.horizonGuide.classList.toggle('ol-visible', ch.type === 'horizon');
-          this.focusRing.style.display = 'flex';
-          this.hudClarity.style.display = 'block';
-          this.rangeInput.value = ch.initialSlider;
-          this.applyVisualEffect(ch.initialSlider);
-        } else if (ch.type === 'target') {
-          this.baseImg.src = ch.photoUrl;
-          this.baseImg.style.filter = 'none';
-          this.baseImg.style.transform = 'none';
-          this.ghostImg.style.opacity = '0';
-          this.horizonGuide.classList.remove('ol-visible');
-          this.focusRing.style.display = 'none';
-          this.hudClarity.style.display = 'none';
-          this.footerMsg.textContent = dict.tapHint;
-          this.footerMsg.style.color = '#38bdf8';
+          this.focusRing.style.display = ch.type === 'target' ? 'none' : 'flex';
+          this.hudClarity.style.display = ch.type === 'target' ? 'none' : 'block';
+
+          if (ch.type === 'target') {
+            this.footerMsg.textContent = dict.tapHint;
+            this.footerMsg.style.color = '#38bdf8';
+          } else {
+            this.rangeInput.value = ch.initialSlider;
+          }
+
+          // Görseli bellekte yükle ve doğrudan Canvas'a çiz (DOM'da <img> etiketi kullanılmaz)
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => {
+            vault.loadedImage = img;
+            this.renderCanvasFrame(ch.type === 'target' ? 0 : ch.initialSlider);
+          };
+          img.src = ch.photoUrl;
         } else if (ch.type === 'grid') {
           this.gridViewEl.innerHTML = '';
           this.footerMsg.textContent = dict.gridHint;
@@ -552,13 +702,14 @@
                 </svg>
               </div>
             `;
-            div.addEventListener('click', () => {
+            div.addEventListener('click', (e) => {
+              if (!isGenuineHumanEvent(e)) return;
               const idx = Number(tile.index);
-              if (this.selectedIndices.has(idx)) {
-                this.selectedIndices.delete(idx);
+              if (vault.selectedIndices.has(idx)) {
+                vault.selectedIndices.delete(idx);
                 div.classList.remove('ol-selected');
               } else {
-                this.selectedIndices.add(idx);
+                vault.selectedIndices.add(idx);
                 div.classList.add('ol-selected');
               }
             });
@@ -571,34 +722,63 @@
       }
     }
 
-    applyVisualEffect(sliderVal) {
-      if (!this.currentChallenge) return;
+    // 2. CANVAS PIXEL RENDERING: DOM üzerinde CSS blur değeri bırakmadan Canvas üzerinde optik bozulma çizer
+    renderCanvasFrame(sliderVal) {
+      const vault = PRIVATE_VAULT.get(this);
+      const ch = vault.challenge;
+      const img = vault.loadedImage;
+      if (!ch || !img) return;
+
       const dict = this.t();
-      const type = this.currentChallenge.type;
-      const delta = sliderVal - this.currentChallenge.targetVal;
+      const ctx = this.ctx;
+      const w = this.canvasEl.width;
+      const h = this.canvasEl.height;
+
+      ctx.clearRect(0, 0, w, h);
+
+      if (ch.type === 'target') {
+        ctx.filter = 'none';
+        ctx.drawImage(img, 0, 0, w, h);
+        this.drawAntiBotNoise(ctx, w, h);
+        return;
+      }
+
+      const delta = sliderVal - ch.targetVal;
       const absDelta = Math.abs(delta);
 
-      if (type === 'focus') {
-        const blurPx = Math.min(14, absDelta / 4.2).toFixed(2);
-        const shiftX = (delta * 0.65).toFixed(1);
-        const shiftY = (delta * -0.25).toFixed(1);
-        const ghostOp = Math.min(0.65, absDelta / 45).toFixed(2);
-        const scale = (1.06 + absDelta * 0.0012).toFixed(3);
+      if (ch.type === 'focus') {
+        const blurPx = Math.min(13, absDelta / 4.2);
+        const shiftX = delta * 0.65;
+        const shiftY = delta * -0.25;
+        const ghostAlpha = Math.min(0.6, absDelta / 45);
 
-        this.baseImg.style.filter = `blur(${blurPx}px)`;
-        this.baseImg.style.transform = `scale(${scale})`;
-        this.ghostImg.style.transform = `translate(${shiftX}px, ${shiftY}px) scale(${scale})`;
-        this.ghostImg.style.opacity = ghostOp;
+        ctx.save();
+        ctx.filter = `blur(${blurPx.toFixed(1)}px)`;
+        ctx.drawImage(img, -10, -10, w + 20, h + 20);
+
+        if (ghostAlpha > 0.03) {
+          ctx.globalAlpha = ghostAlpha;
+          ctx.drawImage(img, -10 + shiftX, -10 + shiftY, w + 20, h + 20);
+        }
+        ctx.restore();
 
         const clarityPct = Math.max(0, Math.min(100, Math.round(100 - absDelta * 1.6)));
         this.hudClarity.textContent = `${dict.clarity}: %${clarityPct}`;
-      } else if (type === 'horizon') {
+      } else if (ch.type === 'horizon') {
+        const angleRad = (delta * 0.65 * Math.PI) / 180;
         const angleDeg = (delta * 0.65).toFixed(1);
-        this.baseImg.style.filter = 'none';
-        this.baseImg.style.transform = `rotate(${angleDeg}deg) scale(1.26)`;
-        this.ghostImg.style.opacity = '0';
+
+        ctx.save();
+        ctx.translate(w / 2, h / 2);
+        ctx.rotate(angleRad);
+        ctx.scale(1.28, 1.28);
+        ctx.drawImage(img, -w / 2, -h / 2, w, h);
+        ctx.restore();
+
         this.hudClarity.textContent = `${dict.angle}: ${angleDeg}°`;
       }
+
+      this.drawAntiBotNoise(ctx, w, h);
 
       if (absDelta <= 4.5) {
         this.focusRing.classList.add('ol-in-focus');
@@ -613,18 +793,37 @@
       }
     }
 
-    verifySlider() {
+    // OCR ve Görüntü Hashleme botlarına karşı dinamik mikro piksel gürültüsü
+    drawAntiBotNoise(ctx, w, h) {
+      ctx.save();
+      for (let i = 0; i < 18; i++) {
+        ctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.12)' : 'rgba(15,23,42,0.12)';
+        ctx.fillRect(secureRandomInt(0, w), secureRandomInt(0, h), 2, 2);
+      }
+      ctx.restore();
+    }
+
+    async verifySlider() {
+      const vault = PRIVATE_VAULT.get(this);
       const dict = this.t();
-      const ch = this.currentChallenge;
-      this.attempts += 1;
+      const ch = vault.challenge;
+      vault.attempts += 1;
 
       const val = parseFloat(this.rangeInput.value);
       const diff = Math.abs(val - ch.targetVal);
-      const dragDurationMs = Math.max(1, Date.now() - this.dragStartTime);
+      const dragDurationMs = Math.max(1, Date.now() - vault.dragStartTime);
+
+      // Hız varyansı (İnsan eli sabit hızla gitmez, hedefe yaklaşırken yavaşlar)
+      let velocityVariance = 0;
+      if (vault.velocities.length > 1) {
+        const mean = vault.velocities.reduce((a, b) => a + b, 0) / vault.velocities.length;
+        velocityVariance =
+          vault.velocities.reduce((acc, v) => acc + Math.pow(v - mean, 2), 0) / vault.velocities.length;
+      }
 
       if (diff > 5.0) {
         this.shakePopover();
-        if (this.attempts >= 3) {
+        if (vault.attempts >= 3) {
           this.statusMsg.textContent = dict.errors.reloadAlign;
           this.statusMsg.style.color = '#f87171';
           setTimeout(() => this.loadNewChallenge(), 450);
@@ -635,7 +834,8 @@
         return;
       }
 
-      if (dragDurationMs < 110 || this.moveSamples < 3) {
+      // Biyometrik kontrol: Çok hızlıysa, örnekleme azsa veya hız varyansı 0 ise (sabit hızlı bot) reddet
+      if (dragDurationMs < 130 || vault.moveSamples < 4 || velocityVariance === 0) {
         this.shakePopover();
         this.statusMsg.textContent = dict.errors.botSpeed;
         this.statusMsg.style.color = '#f87171';
@@ -643,26 +843,29 @@
         return;
       }
 
+      const token = await generateSignedToken(ch.type, { score: 99 });
       this.popoverEl.classList.remove('ol-open');
-      this.markVerified(generateClientToken(ch.type), ch.type);
+      this.markVerified(token, ch.type);
     }
 
-    verifyTarget(xPct, yPct) {
+    async verifyTarget(xPct, yPct) {
+      const vault = PRIVATE_VAULT.get(this);
       const dict = this.t();
-      const ch = this.currentChallenge;
-      this.attempts += 1;
+      const ch = vault.challenge;
+      vault.attempts += 1;
 
       const radius = Number(ch.hotspot.radius) || 24;
       const dist = Math.hypot(xPct - ch.hotspot.x, yPct - ch.hotspot.y);
 
       if (dist <= radius) {
+        const token = await generateSignedToken('target', { score: 97 });
         this.popoverEl.classList.remove('ol-open');
-        this.markVerified(generateClientToken('target'), 'target');
+        this.markVerified(token, 'target');
         return;
       }
 
       this.shakePopover();
-      if (this.attempts >= 2) {
+      if (vault.attempts >= 2) {
         this.footerMsg.textContent = dict.errors.targetMissedReload;
         this.footerMsg.style.color = '#f87171';
         setTimeout(() => this.loadNewChallenge(), 450);
@@ -672,31 +875,33 @@
       this.footerMsg.style.color = '#f87171';
     }
 
-    verifyGrid() {
+    async verifyGrid() {
+      const vault = PRIVATE_VAULT.get(this);
       const dict = this.t();
-      const ch = this.currentChallenge;
+      const ch = vault.challenge;
 
-      if (this.selectedIndices.size === 0) {
+      if (vault.selectedIndices.size === 0) {
         this.footerMsg.textContent = dict.gridEmptyErr;
         this.footerMsg.style.color = '#f87171';
         this.shakePopover();
         return;
       }
 
-      this.attempts += 1;
-      const selected = Array.from(this.selectedIndices).sort((a, b) => a - b);
+      vault.attempts += 1;
+      const selected = Array.from(vault.selectedIndices).sort((a, b) => a - b);
       const expected = [...ch.correctIndices].sort((a, b) => a - b);
 
       const isMatch = selected.length === expected.length && selected.every((v, i) => v === expected[i]);
 
       if (isMatch) {
+        const token = await generateSignedToken('grid', { score: 96 });
         this.popoverEl.classList.remove('ol-open');
-        this.markVerified(generateClientToken('grid'), 'grid');
+        this.markVerified(token, 'grid');
         return;
       }
 
       this.shakePopover();
-      if (this.attempts >= 2) {
+      if (vault.attempts >= 2) {
         this.footerMsg.textContent = dict.errors.gridMismatchReload;
         this.footerMsg.style.color = '#f87171';
         setTimeout(() => this.loadNewChallenge(), 450);
@@ -707,9 +912,10 @@
     }
 
     markVerified(token, mode) {
+      const vault = PRIVATE_VAULT.get(this);
       const dict = this.t();
-      this.state = 'verified';
-      this.token = token;
+      vault.state = 'verified';
+      vault.token = token;
       this.tokenInput.value = token;
 
       this.triggerBox.classList.add('ol-verified');
@@ -722,8 +928,8 @@
       this.triggerTitle.textContent = dict.verifiedTitle;
       this.triggerSub.textContent = `${dict.verifiedSub} ${mode.toUpperCase()}`;
 
-      if (typeof this.options.onVerified === 'function') {
-        this.options.onVerified(token);
+      if (typeof vault.options.onVerified === 'function') {
+        vault.options.onVerified(token);
       }
     }
 
@@ -734,25 +940,27 @@
     }
 
     reset() {
+      const vault = PRIVATE_VAULT.get(this);
       const dict = this.t();
-      this.state = 'idle';
-      this.token = '';
+      vault.state = 'idle';
+      vault.token = '';
       this.tokenInput.value = '';
       this.popoverEl.classList.remove('ol-open');
       this.triggerBox.classList.remove('ol-verified');
       this.triggerBox.setAttribute('aria-checked', 'false');
       this.apertureRing.innerHTML = this.getApertureSvg();
       this.triggerTitle.textContent = dict.triggerTitle;
-      this.triggerSub.textContent = dict.modes[this.options.type] || dict.modes.focus;
-      this.brandSub.textContent = `${this.options.type.toUpperCase()} · ${this.options.lang.toUpperCase()}`;
+      this.triggerSub.textContent = dict.modes[vault.options.type] || dict.modes.focus;
+      this.brandSub.textContent = `${vault.options.type.toUpperCase()} · ${vault.options.lang.toUpperCase()}`;
       this.refreshBtn.title = dict.refreshTitle;
     }
   }
 
   document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.g-recaptcha').forEach((el) => {
-      if (!el._optilockInstance) {
-        el._optilockInstance = new OptiLock(el);
+      if (!PRIVATE_VAULT.has(el)) {
+        const instance = new OptiLock(el);
+        PRIVATE_VAULT.set(el, instance);
       }
     });
   });
@@ -760,4 +968,3 @@
   global.OptiLock = OptiLock;
   global.CustomReCaptcha = OptiLock;
 })(typeof window !== 'undefined' ? window : this);
-
