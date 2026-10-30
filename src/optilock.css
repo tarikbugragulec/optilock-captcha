@@ -1,0 +1,454 @@
+/* Çok Modlu Gerçek Dünya CAPTCHA (Focus, Horizon, Target, 3x3 Grid) Stilleri */
+
+.g-recaptcha-root {
+  position: relative;
+  display: inline-block;
+  width: 100%;
+  max-width: 344px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.ol-hp-field {
+  position: absolute !important;
+  left: -9999px !important;
+  width: 1px !important;
+  height: 1px !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* Ana Tetikleyici Kutu */
+.ol-trigger-box {
+  width: 100%;
+  height: 64px;
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  box-sizing: border-box;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+  transition: all 0.2s ease;
+}
+
+.ol-trigger-box:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.07);
+}
+
+.ol-trigger-box.ol-verified {
+  background: #f0fdf4;
+  border-color: #86efac;
+  cursor: default;
+}
+
+.ol-trigger-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ol-aperture-ring {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #f1f5f9;
+  border: 1.5px solid #cbd5e1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #334155;
+  transition: all 0.25s ease;
+  flex-shrink: 0;
+}
+
+.ol-trigger-box:hover .ol-aperture-ring {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #2563eb;
+}
+
+.ol-trigger-box.ol-verified .ol-aperture-ring {
+  background: #16a34a;
+  border-color: #16a34a;
+  color: #ffffff;
+}
+
+.ol-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2.5px solid #cbd5e1;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: ol-spin 0.7s linear infinite;
+}
+
+@keyframes ol-spin {
+  to { transform: rotate(360deg); }
+}
+
+.ol-trigger-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ol-trigger-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.ol-trigger-sub {
+  font-size: 11.5px;
+  color: #64748b;
+}
+
+.ol-trigger-box.ol-verified .ol-trigger-title {
+  color: #15803d;
+}
+
+.ol-trigger-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.ol-brand-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: #475569;
+  background: #f1f5f9;
+  padding: 3px 7px;
+  border-radius: 6px;
+}
+
+.ol-brand-sub {
+  font-size: 9px;
+  color: #94a3b8;
+}
+
+/* Açılır Doğrulama Penceresi (Popover) */
+.ol-lens-popover {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  width: 100%;
+  background: #0f172a;
+  color: #f8fafc;
+  border-radius: 14px;
+  padding: 12px;
+  box-sizing: border-box;
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.1);
+  z-index: 10000;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(8px) scale(0.98);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ol-lens-popover.ol-open {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0) scale(1);
+}
+
+.ol-lens-popover.ol-shake {
+  animation: ol-shake-anim 0.36s ease;
+}
+
+@keyframes ol-shake-anim {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-6px); }
+  75% { transform: translateX(6px); }
+}
+
+.ol-popover-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.ol-header-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ol-scene-badge {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #38bdf8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ol-scene-instruction {
+  font-size: 12.5px;
+  color: #f1f5f9;
+  line-height: 1.35;
+}
+
+.ol-refresh-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: #cbd5e1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.ol-refresh-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+}
+
+/* 1, 2 & 3. Modlar İçin Fotoğraf Sahnesi (Focus, Horizon, Target) */
+.ol-viewport {
+  position: relative;
+  width: 100%;
+  height: 205px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #1e293b;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.ol-viewport.ol-clickable {
+  cursor: crosshair;
+}
+
+.ol-photo-base {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  will-change: filter, transform;
+}
+
+.ol-photo-ghost {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  will-change: transform, opacity, filter;
+}
+
+.ol-reticle-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+/* Ufuk Çizgisi Kılavuzu (Horizon Modunda Görünür) */
+.ol-horizon-guide {
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  height: 1.5px;
+  background: rgba(56, 189, 248, 0.7);
+  display: none;
+}
+
+.ol-horizon-guide.ol-visible {
+  display: block;
+}
+
+.ol-focus-ring {
+  width: 78px;
+  height: 78px;
+  border: 1.5px dashed rgba(255, 255, 255, 0.65);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.ol-focus-ring.ol-in-focus {
+  border-style: solid;
+  border-color: #4ade80;
+  box-shadow: 0 0 16px rgba(74, 222, 128, 0.55);
+}
+
+.ol-crosshair-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.ol-hud-clarity {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(15, 23, 42, 0.78);
+  backdrop-filter: blur(4px);
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #f8fafc;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+/* Target Modunda Dokunulan Nokta Dalga Efekti */
+.ol-tap-marker {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2.5px solid #38bdf8;
+  background: rgba(56, 189, 248, 0.25);
+  transform: translate(-50%, -50%) scale(0);
+  pointer-events: none;
+  transition: transform 0.2s ease;
+}
+
+.ol-tap-marker.ol-active {
+  transform: translate(-50%, -50%) scale(1);
+}
+
+/* 4. Mod İçin 3x3 Gerçek Fotoğraf Gridi */
+.ol-grid-view {
+  display: none;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+  margin-bottom: 10px;
+}
+
+.ol-grid-view.ol-active {
+  display: grid;
+}
+
+.ol-grid-tile {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border-radius: 7px;
+  overflow: hidden;
+  cursor: pointer;
+  background: #1e293b;
+}
+
+.ol-grid-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.15s ease;
+}
+
+.ol-grid-tile.ol-selected img {
+  transform: scale(0.82);
+  border-radius: 6px;
+}
+
+.ol-grid-check {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #2563eb;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: scale(0);
+  transition: transform 0.15s ease;
+}
+
+.ol-grid-tile.ol-selected .ol-grid-check {
+  transform: scale(1);
+}
+
+/* Alt Kaydırıcı veya Doğrula Butonu Bölümü */
+.ol-slider-section {
+  margin-top: 12px;
+}
+
+.ol-slider-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #94a3b8;
+  margin-bottom: 6px;
+}
+
+.ol-status-msg {
+  color: #fbbf24;
+  font-weight: 500;
+}
+
+.ol-range-input {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #334155 0%, #38bdf8 50%, #334155 100%);
+  outline: none;
+  cursor: grab;
+}
+
+.ol-range-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 3px solid #0284c7;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  cursor: grab;
+}
+
+.ol-grid-footer {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+}
+
+.ol-grid-footer.ol-active {
+  display: flex;
+}
+
+.ol-verify-btn {
+  background: #2563eb;
+  color: #ffffff;
+  border: none;
+  border-radius: 7px;
+  padding: 8px 18px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ol-verify-btn:hover {
+  background: #1d4ed8;
+}
